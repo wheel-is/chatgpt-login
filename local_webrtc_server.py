@@ -318,6 +318,20 @@ def handle_input_event(data):
         
         elif event_type == "keydown":
             key = data.get("key", "")
+            ctrl_key = data.get("ctrlKey", False)
+            meta_key = data.get("metaKey", False)  # Cmd key on Mac
+            
+            # Handle Cmd+V (Mac) or Ctrl+V (Windows/Linux) paste shortcuts
+            if (key.lower() == "v" and (ctrl_key or meta_key)):
+                # Trigger paste functionality instead of sending the key combo
+                clipboard_text = data.get("clipboardText", "")
+                if clipboard_text:
+                    # Use xclip to set clipboard and paste
+                    p = subprocess.Popen(['xclip', '-selection', 'clipboard'], stdin=subprocess.PIPE, env={'DISPLAY': DISPLAY_NUM})
+                    p.communicate(input=clipboard_text.encode('utf-8'))
+                    subprocess.run(['xdotool', 'key', 'ctrl+v'], env={'DISPLAY': DISPLAY_NUM}, timeout=1)
+                return
+            
             if key:
                 if len(key) == 1:
                     # Use 'type' for single characters to handle symbols correctly
@@ -817,11 +831,29 @@ async def index(request):
             });
         });
 
-        document.addEventListener('keydown', (e) => {
+        document.addEventListener('keydown', async (e) => {
             if (!dc || dc.readyState !== 'open') {
                 return;
             }
             e.preventDefault();
+
+            // Handle Cmd+V (Mac) or Ctrl+V (Windows/Linux) for paste
+            if (e.key.toLowerCase() === 'v' && (e.ctrlKey || e.metaKey)) {
+                try {
+                    const clipboardText = await navigator.clipboard.readText();
+                    sendInput({
+                        type: 'keydown',
+                        key: e.key,
+                        ctrlKey: e.ctrlKey,
+                        metaKey: e.metaKey,
+                        clipboardText: clipboardText
+                    });
+                    return;
+                } catch (err) {
+                    // Fallback if clipboard access fails - just send the key combo
+                    console.warn('Clipboard access failed:', err);
+                }
+            }
 
             // Handle special keys
             let keyName = e.key;
@@ -848,7 +880,12 @@ async def index(request):
                 keyName = e.key;
             }
 
-            sendInput({ type: 'keydown', key: keyName });
+            sendInput({ 
+                type: 'keydown', 
+                key: keyName,
+                ctrlKey: e.ctrlKey,
+                metaKey: e.metaKey
+            });
         });
 
         document.addEventListener('keyup', (e) => {
