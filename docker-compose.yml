@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  electron-webrtc:
+    build: .
+    ports:
+      - "8080:8080"
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "5349:5349"
+      - "5349:5349/udp"
+    environment:
+      - DISPLAY=:99
+      - ELECTRON_DISABLE_SANDBOX=1
+    volumes:
+      - ./main.js:/app/main.js:ro
+      - ./preload.js:/app/preload.js:ro
+      - ./package.json:/app/package.json:ro
+      - ./turnserver.conf:/etc/turnserver.conf:ro
+    command: ["python3", "local_webrtc_server.py"]
+
