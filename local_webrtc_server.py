@@ -489,10 +489,7 @@ async def offer(request):
 
 async def index(request):
     """Serve the frontend HTML page"""
-    turn_urls_js = json.dumps(TURN_URLS)
-    stun_urls_js = json.dumps(STUN_URLS)
-
-    html = f"""<!DOCTYPE html>
+    html = """<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -632,17 +629,17 @@ async def index(request):
                 updateStatus('Connecting...', 'normal');
                 loadingEl.style.display = 'block';
 
-                pc = new RTCPeerConnection({{
+                pc = new RTCPeerConnection({
                     iceServers: [
-                        {{ urls: {stun_urls_js}[0] }},
-                        {{ urls: {stun_urls_js}[1] }},
-                        {{
-                            urls: {turn_urls_js},
+                        { urls: '__STUN_URL_0__' },
+                        { urls: '__STUN_URL_1__' },
+                        {
+                            urls: '__TURN_URLS__',
                             username: 'webrtc',
                             credential: 'password123'
-                        }}
+                        }
                     ]
-                }});
+                });
 
                 pc.addTransceiver('video', { direction: 'recvonly' });
                 const videoTransceiver = pc.getTransceivers().find(t => t.receiver && t.receiver.track && t.receiver.track.kind === 'video');
@@ -943,14 +940,17 @@ async def index(request):
     </script>
 </body>
 </html>"""
+    
+    # Replace placeholders with actual values
+    html = html.replace('__STUN_URL_0__', STUN_URLS[0])
+    html = html.replace('__STUN_URL_1__', STUN_URLS[1])
+    html = html.replace('__TURN_URLS__', json.dumps(TURN_URLS))
+    
     return web.Response(text=html, content_type="text/html")
 
 async def embed(request):
     """Serve embeddable minimal UI page"""
-    turn_urls_js = json.dumps(TURN_URLS)
-    stun_urls_js = json.dumps(STUN_URLS)
-
-    html = f"""<!DOCTYPE html>
+    html = """<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8" />
@@ -1043,10 +1043,10 @@ async def embed(request):
 
                 pc = new RTCPeerConnection({{
                     iceServers: [
-                        {{ urls: {stun_urls_js}[0] }},
-                        {{ urls: {stun_urls_js}[1] }},
+                        {{ urls: '__STUN_URL_0__' }},
+                        {{ urls: '__STUN_URL_1__' }},
                         {{
-                            urls: {turn_urls_js},
+                            urls: '__TURN_URLS__',
                             username: 'webrtc',
                             credential: 'password123'
                         }}
@@ -1187,6 +1187,11 @@ async def embed(request):
     </script>
 </body>
 </html>"""
+    
+    # Replace placeholders with actual values
+    html = html.replace('__STUN_URL_0__', STUN_URLS[0])
+    html = html.replace('__STUN_URL_1__', STUN_URLS[1])
+    html = html.replace('__TURN_URLS__', json.dumps(TURN_URLS))
 
     response = web.Response(text=html, content_type="text/html")
     response.headers['X-Frame-Options'] = 'ALLOWALL'
