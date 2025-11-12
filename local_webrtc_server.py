@@ -1194,8 +1194,9 @@ async def embed(request):
     html = html.replace('__TURN_URLS__', json.dumps(TURN_URLS))
 
     response = web.Response(text=html, content_type="text/html")
-    response.headers['X-Frame-Options'] = 'ALLOWALL'
-    response.headers['Content-Security-Policy'] = "frame-ancestors *"
+    # Allow embedding from any origin including file:// and http://
+    del response.headers['X-Frame-Options']  # Remove this as it conflicts with CSP
+    response.headers['Content-Security-Policy'] = "frame-ancestors 'self' http: https: file: data:"
     return response
 
 async def restart_electron(request):
