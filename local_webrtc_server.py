@@ -9,6 +9,9 @@ import json
 import subprocess
 import os
 import threading
+import secrets
+import time
+from collections import defaultdict
 from aiohttp import web
 from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration, RTCIceServer, RTCRtpSender
 from aiortc.mediastreams import VideoStreamTrack
@@ -28,6 +31,10 @@ electron_monitor_thread = None
 ffmpeg_process = None
 turn_process = None
 data_channels = set()  # Store active data channels to send credentials
+
+# API Key management
+api_keys = {}  # {key: {created_at, domain_whitelist, rate_limit}}
+api_key_usage = defaultdict(list)  # {key: [timestamp1, timestamp2, ...]}
 
 class ElectronDisplayTrack(VideoStreamTrack):
     """Captures the Electron app display and streams it via WebRTC"""
@@ -354,12 +361,76 @@ def handle_input_event(data):
     except Exception as e:
         print(f"Error handling {event_type}: {e}")
 
+def generate_api_key():
+    """Generate a new API key"""
+    return 'sk_' + secrets.token_urlsafe(32)
+
+def validate_api_key(key):
+    """Validate an API key and check rate limits"""
+    if not key or key not in api_keys:
+        return False, "Invalid API key"
+    
+    # Check rate limit (10 logins per hour)
+    now = time.time()
+    one_hour_ago = now - 3600
+    
+    # Clean old usage records
+    api_key_usage[key] = [ts for ts in api_key_usage[key] if ts > one_hour_ago]
+    
+    if len(api_key_usage[key]) >= 10:
+        return False, "Rate limit exceeded (10 logins/hour)"
+    
+    # Record this usage
+    api_key_usage[key].append(now)
+    
+    return True, "Valid"
+
+async def create_api_key(request):
+    """Create a new API key"""
+    # Simple admin endpoint - in production, add proper auth
+    key = generate_api_key()
+    api_keys[key] = {
+        'created_at': time.time(),
+        'domain_whitelist': [],  # Empty = allow all domains
+        'rate_limit': 10  # per hour
+    }
+    return web.Response(
+        content_type="application/json",
+        text=json.dumps({"api_key": key, "created_at": api_keys[key]['created_at']})
+    )
+
+async def list_api_keys(request):
+    """List all API keys (admin endpoint)"""
+    keys_info = []
+    for key, info in api_keys.items():
+        usage_count = len([ts for ts in api_key_usage[key] if ts > time.time() - 3600])
+        keys_info.append({
+            'key': key[:10] + '...',  # Truncate for security
+            'created_at': info['created_at'],
+            'usage_last_hour': usage_count
+        })
+    return web.Response(
+        content_type="application/json",
+        text=json.dumps({"keys": keys_info})
+    )
+
 async def offer(request):
     """Handle WebRTC offer"""
+    # Validate API key from query params
+    api_key = request.query.get('api_key', '')
+    valid, message = validate_api_key(api_key)
+    
+    if not valid:
+        return web.Response(
+            status=401,
+            content_type="application/json",
+            text=json.dumps({"error": message})
+        )
+    
     params = await request.json()
     peer_id = params.get("peer_id", "default")
     
-    print(f"Received offer from peer {peer_id}")
+    print(f"Received offer from peer {peer_id} (API key: {api_key[:10]}...)")
     
     offer_sdp = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
 
@@ -384,9 +455,19 @@ async def offer(request):
         if pc.iceGatheringState == "complete" and not ice_complete.is_set():
             ice_complete.set()
 
+    # Session timeout tracking
+    session_start = time.time()
+
     @pc.on("connectionstatechange")
     async def on_connectionstatechange():
         print(f"Connection state for {peer_id}: {pc.connectionState}")
+        
+        # Auto-cleanup after 5 minutes
+        if time.time() - session_start > 300:
+            print(f"Session timeout for {peer_id} (5 minutes)")
+            if pc.connectionState not in ("failed", "closed"):
+                await pc.close()
+        
         if pc.connectionState in ("failed", "closed", "disconnected"):
             print(f"Cleaning up connection for {peer_id}")
             # Stop video track
@@ -481,6 +562,16 @@ async def offer(request):
 
 async def index(request):
     """Serve the frontend HTML page"""
+    # Validate API key for standalone usage (optional for now)
+    api_key = request.query.get('api_key', '')
+    if api_key:
+        valid, message = validate_api_key(api_key)
+        if not valid:
+            return web.Response(
+                status=401,
+                text=f"Unauthorized: {message}"
+            )
+    
     html = """<!DOCTYPE html>
 <html>
 <head>
@@ -934,6 +1025,284 @@ async def index(request):
 </html>"""
     return web.Response(text=html, content_type="text/html")
 
+async def embed(request):
+    """Serve embeddable iframe version with minimal UI"""
+    # Validate API key (required for embed)
+    api_key = request.query.get('api_key', '')
+    valid, message = validate_api_key(api_key)
+    
+    if not valid:
+        return web.Response(
+            status=401,
+            text=f"<h1>Unauthorized</h1><p>{message}</p>",
+            content_type="text/html"
+        )
+    
+    # Optional branding parameters
+    accent_color = request.query.get('accent_color', '#10a37f')
+    logo_url = request.query.get('logo_url', '')
+    
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>ChatGPT Login</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #000;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }}
+        .video-container {{
+            flex: 1;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }}
+        video {{
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: #000;
+        }}
+        .loading {{
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            color: {accent_color};
+        }}
+        .success {{
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px;
+            border-radius: 12px;
+            text-align: center;
+            display: none;
+        }}
+        .success h2 {{
+            color: {accent_color};
+            margin-bottom: 10px;
+        }}
+        .logo {{
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            max-width: 120px;
+            max-height: 40px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="video-container">
+        {"<img class='logo' src='" + logo_url + "' alt='Logo'>" if logo_url else ""}
+        <video id="remoteVideo" autoplay playsinline></video>
+        <div id="loading" class="loading">Initializing secure login...</div>
+        <div id="success" class="success">
+            <h2>✓ Login Successful</h2>
+            <p>Credentials have been securely delivered.</p>
+        </div>
+    </div>
+    <script>
+        const OFFER_URL = '/offer?api_key={api_key}';
+        const remoteVideo = document.getElementById('remoteVideo');
+        const loadingEl = document.getElementById('loading');
+        const successEl = document.getElementById('success');
+        const peerId = 'peer_' + Math.random().toString(36).slice(2, 10);
+        const isIframe = window.parent !== window;
+
+        let pc = null;
+        let dc = null;
+
+        function showSuccess() {{
+            loadingEl.style.display = 'none';
+            remoteVideo.style.display = 'none';
+            successEl.style.display = 'block';
+        }}
+
+        async function connect() {{
+            try {{
+                loadingEl.style.display = 'block';
+                loadingEl.textContent = 'Connecting...';
+
+                pc = new RTCPeerConnection({{
+                    iceServers: [
+                        {{ urls: 'stun:stun.l.google.com:19302' }},
+                        {{ urls: 'stun:stun1.l.google.com:19302' }},
+                        {{
+                            urls: ['turn:64.23.163.23:3478', 'turn:64.23.163.23:5349'],
+                            username: 'webrtc',
+                            credential: 'password123'
+                        }}
+                    ]
+                }});
+
+                pc.addTransceiver('video', {{ direction: 'recvonly' }});
+
+                pc.ontrack = (event) => {{
+                    remoteVideo.srcObject = event.streams[0];
+                    loadingEl.style.display = 'none';
+                }};
+
+                pc.onconnectionstatechange = () => {{
+                    if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {{
+                        loadingEl.textContent = 'Connection lost. Please reload.';
+                    }}
+                }};
+
+                dc = pc.createDataChannel('input', {{ ordered: true }});
+                dc.onmessage = handleDataChannelMessage;
+                dc.onclose = () => {{}};
+
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                const response = await fetch(OFFER_URL, {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{
+                        peer_id: peerId,
+                        sdp: pc.localDescription.sdp,
+                        type: pc.localDescription.type
+                    }})
+                }});
+
+                if (!response.ok) {{
+                    throw new Error('Server error: ' + response.status);
+                }}
+
+                const answer = await response.json();
+                await pc.setRemoteDescription({{
+                    type: answer.type,
+                    sdp: answer.sdp
+                }});
+
+            }} catch (error) {{
+                console.error(error);
+                loadingEl.textContent = 'Connection failed: ' + error.message;
+            }}
+        }}
+
+        function handleDataChannelMessage(event) {{
+            try {{
+                const data = JSON.parse(event.data);
+                if (data.type === 'credentials') {{
+                    // Send credentials to parent window via postMessage
+                    if (isIframe) {{
+                        window.parent.postMessage({{
+                            type: 'chatgpt-credentials',
+                            credentials: data.credentials
+                        }}, '*');
+                        
+                        // Show success and cleanup
+                        showSuccess();
+                        setTimeout(() => {{
+                            if (dc) dc.close();
+                            if (pc) pc.close();
+                        }}, 2000);
+                    }}
+                }}
+            }} catch (e) {{
+                // Ignore non-JSON messages
+            }}
+        }}
+
+        function sendInput(data) {{
+            if (dc && dc.readyState === 'open') {{
+                dc.send(JSON.stringify(data));
+            }}
+        }}
+
+        // Mouse and keyboard event handling
+        ['mousedown', 'mouseup', 'mousemove'].forEach(eventName => {{
+            remoteVideo.addEventListener(eventName, (e) => {{
+                if (!dc || dc.readyState !== 'open') return;
+                e.preventDefault();
+                
+                const rect = remoteVideo.getBoundingClientRect();
+                const scaleX = {DISPLAY_WIDTH} / rect.width;
+                const scaleY = {DISPLAY_HEIGHT} / rect.height;
+                const x = Math.round((e.clientX - rect.left) * scaleX);
+                const y = Math.round((e.clientY - rect.top) * scaleY);
+                const button = e.button + 1;
+                sendInput({{ type: eventName, x, y, button }});
+            }});
+        }});
+
+        document.addEventListener('keydown', async (e) => {{
+            if (!dc || dc.readyState !== 'open') return;
+            e.preventDefault();
+
+            // Handle Cmd+V (Mac) or Ctrl+V (Windows/Linux) for paste
+            if (e.key.toLowerCase() === 'v' && (e.ctrlKey || e.metaKey)) {{
+                try {{
+                    const clipboardText = await navigator.clipboard.readText();
+                    sendInput({{
+                        type: 'keydown',
+                        key: e.key,
+                        ctrlKey: e.ctrlKey,
+                        metaKey: e.metaKey,
+                        clipboardText: clipboardText
+                    }});
+                    return;
+                }} catch (err) {{
+                    console.warn('Clipboard access failed:', err);
+                }}
+            }}
+
+            // Handle special keys
+            let keyName = e.key;
+            if (e.key === 'Backspace') keyName = 'BackSpace';
+            else if (e.key === 'Enter') keyName = 'Return';
+            else if (e.key === ' ') keyName = 'space';
+            else if (e.key === 'Tab') keyName = 'Tab';
+            else if (e.key === 'Escape') keyName = 'Escape';
+            else if (e.key === 'ArrowUp') keyName = 'Up';
+            else if (e.key === 'ArrowDown') keyName = 'Down';
+            else if (e.key === 'ArrowLeft') keyName = 'Left';
+            else if (e.key === 'ArrowRight') keyName = 'Right';
+            else if (e.key === 'Delete') keyName = 'Delete';
+            else if (e.key === 'Insert') keyName = 'Insert';
+            else if (e.key === 'Home') keyName = 'Home';
+            else if (e.key === 'End') keyName = 'End';
+            else if (e.key === 'PageUp') keyName = 'Page_Up';
+            else if (e.key === 'PageDown') keyName = 'Page_Down';
+
+            sendInput({{ type: 'keydown', key: keyName, ctrlKey: e.ctrlKey, metaKey: e.metaKey }});
+        }});
+
+        remoteVideo.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        // Auto-connect on page load
+        window.addEventListener('load', () => {{
+            setTimeout(connect, 500);
+        }});
+    </script>
+</body>
+</html>"""
+    
+    response = web.Response(text=html, content_type="text/html")
+    # Allow iframe embedding
+    response.headers['X-Frame-Options'] = 'ALLOWALL'
+    response.headers['Content-Security-Policy'] = "frame-ancestors *"
+    return response
+
 async def restart_electron(request):
     """Restart Electron app for fresh session"""
     print("\n" + "="*30)
@@ -1006,8 +1375,11 @@ def main():
     # Set up aiohttp application
     app = web.Application()
     app.router.add_get('/', index)
+    app.router.add_get('/embed', embed)
     app.router.add_post('/offer', offer)
     app.router.add_post('/restart-electron', restart_electron)
+    app.router.add_post('/api/keys', create_api_key)
+    app.router.add_get('/api/keys', list_api_keys)
     app.on_shutdown.append(on_shutdown)
 
     print("\n" + "="*60)
