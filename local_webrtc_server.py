@@ -1188,9 +1188,9 @@ async def embed(request):
 </body>
 </html>"""
     
-    # Replace placeholders with actual values (add quotes for strings, array for TURN)
-    html = html.replace('__STUN_URL_0__', f"'{STUN_URLS[0]}'")
-    html = html.replace('__STUN_URL_1__', f"'{STUN_URLS[1]}'")
+    # Replace placeholders with actual values (placeholders are already inside quotes in template)
+    html = html.replace('__STUN_URL_0__', STUN_URLS[0])  # Template has '__STUN_URL_0__', so this becomes 'stun:...'
+    html = html.replace('__STUN_URL_1__', STUN_URLS[1])  # Template has '__STUN_URL_1__', so this becomes 'stun:...'
     html = html.replace('__TURN_URLS__', json.dumps(TURN_URLS))  # Produces valid JS array
     
     # Replace double braces (used for escaping in f-strings, but this is a regular string)
