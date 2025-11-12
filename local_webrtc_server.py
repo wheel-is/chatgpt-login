@@ -574,7 +574,7 @@ async def index(request):
         </div>
     </div>
     <div class="video-container">
-        <video id="remoteVideo" autoplay playsinline style="cursor: none;"></video>
+        <video id="remoteVideo" autoplay playsinline></video>
         <div id="loading" class="loading" style="display: none;">Connecting...</div>
     </div>
     <div class="footer">
