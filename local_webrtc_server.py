@@ -631,10 +631,10 @@ async def index(request):
 
                 pc = new RTCPeerConnection({
                     iceServers: [
-                        { urls: '__STUN_URL_0__' },
-                        { urls: '__STUN_URL_1__' },
+                        { urls: __STUN_URL_0__ },
+                        { urls: __STUN_URL_1__ },
                         {
-                            urls: '__TURN_URLS__',
+                            urls: __TURN_URLS__,
                             username: 'webrtc',
                             credential: 'password123'
                         }
@@ -941,10 +941,10 @@ async def index(request):
 </body>
 </html>"""
     
-    # Replace placeholders with actual values
-    html = html.replace('__STUN_URL_0__', STUN_URLS[0])
-    html = html.replace('__STUN_URL_1__', STUN_URLS[1])
-    html = html.replace('__TURN_URLS__', json.dumps(TURN_URLS))
+    # Replace placeholders with actual values (inject as raw JS literals)
+    html = html.replace('__STUN_URL_0__', f"'{STUN_URLS[0]}'")
+    html = html.replace('__STUN_URL_1__', f"'{STUN_URLS[1]}'")
+    html = html.replace('__TURN_URLS__', json.dumps(TURN_URLS))  # Already produces valid JS array
     
     return web.Response(text=html, content_type="text/html")
 
@@ -1188,11 +1188,11 @@ async def embed(request):
 </body>
 </html>"""
     
-    # Replace placeholders with actual values
-    html = html.replace('__STUN_URL_0__', STUN_URLS[0])
-    html = html.replace('__STUN_URL_1__', STUN_URLS[1])
-    html = html.replace('__TURN_URLS__', json.dumps(TURN_URLS))
-
+    # Replace placeholders with actual values (inject as raw JS literals)
+    html = html.replace('__STUN_URL_0__', f"'{STUN_URLS[0]}'")
+    html = html.replace('__STUN_URL_1__', f"'{STUN_URLS[1]}'")
+    html = html.replace('__TURN_URLS__', json.dumps(TURN_URLS))  # Already produces valid JS array
+    
     response = web.Response(text=html, content_type="text/html")
     # Allow embedding from any origin including file:// and http://
     response.headers['Content-Security-Policy'] = "frame-ancestors 'self' http: https: file: data:"
