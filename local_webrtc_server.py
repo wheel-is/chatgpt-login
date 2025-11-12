@@ -1195,7 +1195,6 @@ async def embed(request):
 
     response = web.Response(text=html, content_type="text/html")
     # Allow embedding from any origin including file:// and http://
-    del response.headers['X-Frame-Options']  # Remove this as it conflicts with CSP
     response.headers['Content-Security-Policy'] = "frame-ancestors 'self' http: https: file: data:"
     return response
 
