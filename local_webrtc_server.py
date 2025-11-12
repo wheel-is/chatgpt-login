@@ -48,6 +48,9 @@ class ElectronDisplayTrack(VideoStreamTrack):
                 '-framerate', str(FPS),
                 '-probesize', '50M',
                 '-i', DISPLAY_NUM,
+                # Force key-frame interval (GOP) and delay first large I-frame
+                '-g', '120',  # one key-frame every ~5s at 24 fps
+                '-force_key_frames', 'expr:gte(t,10)',  # push first big I-frame after 10s
                 '-vf', 'format=yuv420p',
                 '-pix_fmt', 'yuv420p',
                 '-f', 'rawvideo',
@@ -430,11 +433,29 @@ async def offer(request):
     try:
         params = sender.getParameters()
         if params and getattr(params, 'encodings', None):
+            # Start conservatively to avoid early congestion dips
             for enc in params.encodings:
-                enc.maxBitrate = 8_000_000  # ~8 Mbps
+                enc.maxBitrate = 3_000_000   # ~3 Mbps initial cap
+                enc.minBitrate = 2_000_000   # ~2 Mbps floor
                 enc.maxFramerate = FPS
                 enc.scaleResolutionDownBy = 1.0
             await sender.setParameters(params)
+
+            async def ramp_bitrate():
+                await asyncio.sleep(8)  # let ICE + congestion controller stabilize
+                try:
+                    ramp_params = sender.getParameters()
+                    if ramp_params and getattr(ramp_params, 'encodings', None):
+                        for enc in ramp_params.encodings:
+                            enc.maxBitrate = 8_000_000  # raise ceiling
+                            enc.minBitrate = 6_000_000  # raise floor to keep quality
+                            enc.maxFramerate = FPS
+                        await sender.setParameters(ramp_params)
+                        print("🔧 Bitrate ramped to ~6-8 Mbps after stabilization")
+                except Exception as re:
+                    print(f"⚠️  Bitrate ramp failed: {re}")
+
+            asyncio.create_task(ramp_bitrate())
     except Exception as e:
         print(f"⚠️  Encoding parameter setup failed: {e}")
 
@@ -617,7 +638,7 @@ async def index(request):
                 const videoTransceiver = pc.getTransceivers().find(t => t.receiver && t.receiver.track && t.receiver.track.kind === 'video');
                 if (videoTransceiver) {
                     if (videoTransceiver.setDegradationPreference) {
-                        try { videoTransceiver.setDegradationPreference('maintain-resolution'); } catch (e) {}
+                        try { videoTransceiver.setDegradationPreference('maintain-framerate'); } catch (e) {}
                     }
                     if (videoTransceiver.setCodecPreferences && typeof RTCRtpSender !== 'undefined' && RTCRtpSender.getCapabilities) {
                         const capabilities = RTCRtpSender.getCapabilities('video');
@@ -635,6 +656,12 @@ async def index(request):
 
                 pc.ontrack = (event) => {
                     remoteVideo.srcObject = event.streams[0];
+                    try {
+                        const track = event.streams[0].getVideoTracks()[0];
+                        if (track && 'contentHint' in track) {
+                            track.contentHint = 'detail';
+                        }
+                    } catch (e) {}
                     updateStatus('Connected!', 'connected');
                     setConnected(true);
                     loadingEl.style.display = 'none';
