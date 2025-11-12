@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatGPT Login - Local Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: white;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 36px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .card h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 24px;
+        }
+
+        .info {
+            background: #eff6ff;
+            border-left: 4px solid #3b82f6;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            color: #1e40af;
+        }
+
+        .iframe-container {
+            margin-top: 20px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        iframe {
+            width: 100%;
+            height: 700px;
+            border: none;
+        }
+
+        .credentials-output {
+            background: #f0fdf4;
+            border: 2px solid #10a37f;
+            border-radius: 8px;
+            padding: 25px;
+            display: none;
+        }
+
+        .credentials-output.visible {
+            display: block;
+        }
+
+        .credentials-output h3 {
+            color: #10a37f;
+            margin-bottom: 20px;
+            font-size: 22px;
+        }
+
+        .credential-item {
+            padding: 12px 0;
+            border-bottom: 1px solid #d1fae5;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .credential-item:last-child {
+            border-bottom: none;
+        }
+
+        .credential-item strong {
+            color: #065f46;
+            min-width: 140px;
+            font-weight: 600;
+        }
+
+        .credential-value {
+            flex: 1;
+            color: #047857;
+            word-break: break-all;
+        }
+
+        code {
+            background: #e0e7ff;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+            color: #1e40af;
+        }
+
+        .copy-button {
+            background: #10a37f;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            margin-top: 15px;
+            font-weight: 600;
+        }
+
+        .copy-button:hover {
+            background: #0d8c6b;
+        }
+
+        .status {
+            padding: 10px 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+
+        .status.waiting {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .status.success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 ChatGPT Login Component Demo</h1>
+        
+        <div class="card">
+            <h2>Step 1: Get Your API Key</h2>
+            <div class="info">
+                Run this command in your terminal to generate an API key:
+                <br><br>
+                <code>curl -X POST http://64.23.163.23:8080/api/keys</code>
+                <br><br>
+                Then paste the API key in the iframe URL below (replace <code>sk_demo_key</code>).
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Step 2: Complete Login</h2>
+            <div id="status" class="status waiting">
+                Waiting for login to complete...
+            </div>
+            
+            <div class="iframe-container">
+                <iframe 
+                    id="loginFrame"
+                    src="http://64.23.163.23:8080/embed?api_key=sk_demo_key"
+                    allow="clipboard-read; clipboard-write">
+                </iframe>
+            </div>
+        </div>
+
+        <div class="card credentials-output" id="credentialsCard">
+            <h3>✓ Login Successful! Credentials Received:</h3>
+            <div id="credentialsContent"></div>
+            <button class="copy-button" onclick="copyCredentials()">Copy All Credentials</button>
+        </div>
+
+        <div class="card">
+            <h2>Step 3: Use the Credentials</h2>
+            <p style="color: #666; line-height: 1.8;">
+                Once you receive the credentials (shown above), you can use them to:
+            </p>
+            <ul style="margin: 15px 0 15px 25px; color: #666; line-height: 2;">
+                <li>Make ChatGPT API requests on behalf of the user</li>
+                <li>Store the session for future use</li>
+                <li>Access conversation history</li>
+                <li>Send/receive messages programmatically</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        let receivedCredentials = null;
+
+        // Listen for credentials from the embedded iframe
+        window.addEventListener('message', (event) => {
+            // Validate origin (in production, be more strict)
+            if (!event.origin.includes('64.23.163.23')) {
+                console.warn('Ignored message from:', event.origin);
+                return;
+            }
+
+            console.log('Received message:', event.data);
+
+            if (event.data.type === 'chatgpt-credentials') {
+                const credentials = event.data.credentials;
+                receivedCredentials = credentials;
+                displayCredentials(credentials);
+            }
+        });
+
+        function displayCredentials(credentials) {
+            const statusEl = document.getElementById('status');
+            const credentialsCard = document.getElementById('credentialsCard');
+            const content = document.getElementById('credentialsContent');
+            
+            // Update status
+            statusEl.className = 'status success';
+            statusEl.textContent = '✓ Credentials successfully received from iframe!';
+
+            // Display credentials
+            content.innerHTML = `
+                <div class="credential-item">
+                    <strong>Email:</strong>
+                    <div class="credential-value">${credentials.email}</div>
+                </div>
+                <div class="credential-item">
+                    <strong>Access Token:</strong>
+                    <div class="credential-value"><code>${credentials.accessToken}</code></div>
+                </div>
+                ${credentials.sessionToken ? `
+                <div class="credential-item">
+                    <strong>Session Token:</strong>
+                    <div class="credential-value"><code>${credentials.sessionToken}</code></div>
+                </div>
+                ` : ''}
+                ${credentials.userId ? `
+                <div class="credential-item">
+                    <strong>User ID:</strong>
+                    <div class="credential-value">${credentials.userId}</div>
+                </div>
+                ` : ''}
+                <div class="credential-item">
+                    <strong>Timestamp:</strong>
+                    <div class="credential-value">${new Date(credentials.timestamp).toLocaleString()}</div>
+                </div>
+                <div class="credential-item">
+                    <strong>Raw JSON:</strong>
+                    <div class="credential-value">
+                        <pre style="background: #f9fafb; padding: 10px; border-radius: 4px; overflow-x: auto; margin-top: 5px;">${JSON.stringify(credentials, null, 2)}</pre>
+                    </div>
+                </div>
+            `;
+            
+            credentialsCard.classList.add('visible');
+
+            // Log to console for easy debugging
+            console.log('✓ ChatGPT Credentials:', credentials);
+        }
+
+        function copyCredentials() {
+            if (receivedCredentials) {
+                navigator.clipboard.writeText(JSON.stringify(receivedCredentials, null, 2))
+                    .then(() => alert('Credentials copied to clipboard!'))
+                    .catch(err => console.error('Copy failed:', err));
+            }
+        }
+
+        // Log when page loads
+        console.log('%c🔐 ChatGPT Login Component Demo', 'color: #10a37f; font-size: 20px; font-weight: bold;');
+        console.log('%cWaiting for credentials from iframe...', 'color: #666; font-size: 14px;');
+    </script>
+</body>
+</html>
+
