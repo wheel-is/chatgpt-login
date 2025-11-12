@@ -127,7 +127,8 @@ def start_xvfb():
         '-ac',
         '+extension', 'GLX',
         '+render',
-        '-noreset'
+        '-noreset',
+        '-nocursor'
     ])
 
     import time
@@ -433,25 +434,25 @@ async def offer(request):
     try:
         params = sender.getParameters()
         if params and getattr(params, 'encodings', None):
-            # Start conservatively to avoid early congestion dips
+            # Start conservatively to reduce latency
             for enc in params.encodings:
-                enc.maxBitrate = 3_000_000   # ~3 Mbps initial cap
-                enc.minBitrate = 2_000_000   # ~2 Mbps floor
+                enc.maxBitrate = 2_000_000   # 2 Mbps initial ceiling
+                enc.minBitrate = 1_000_000   # 1 Mbps floor
                 enc.maxFramerate = FPS
                 enc.scaleResolutionDownBy = 1.0
             await sender.setParameters(params)
 
             async def ramp_bitrate():
-                await asyncio.sleep(8)  # let ICE + congestion controller stabilize
+                await asyncio.sleep(6)  # allow ICE + congestion control to settle
                 try:
                     ramp_params = sender.getParameters()
                     if ramp_params and getattr(ramp_params, 'encodings', None):
                         for enc in ramp_params.encodings:
-                            enc.maxBitrate = 8_000_000  # raise ceiling
-                            enc.minBitrate = 6_000_000  # raise floor to keep quality
+                            enc.maxBitrate = 4_000_000  # 4 Mbps ceiling for quality
+                            enc.minBitrate = 3_000_000  # keep floor high to avoid blur
                             enc.maxFramerate = FPS
                         await sender.setParameters(ramp_params)
-                        print("🔧 Bitrate ramped to ~6-8 Mbps after stabilization")
+                        print("🔧 Bitrate ramped to ~3-4 Mbps after stabilization")
                 except Exception as re:
                     print(f"⚠️  Bitrate ramp failed: {re}")
 
