@@ -941,10 +941,10 @@ async def index(request):
 </body>
 </html>"""
     
-    # Replace placeholders with actual values (inject as raw JS literals)
+    # Replace placeholders with actual values (add quotes for strings, array for TURN)
     html = html.replace('__STUN_URL_0__', f"'{STUN_URLS[0]}'")
     html = html.replace('__STUN_URL_1__', f"'{STUN_URLS[1]}'")
-    html = html.replace('__TURN_URLS__', json.dumps(TURN_URLS))  # Already produces valid JS array
+    html = html.replace('__TURN_URLS__', json.dumps(TURN_URLS))  # Produces valid JS array
     
     return web.Response(text=html, content_type="text/html")
 
@@ -1188,10 +1188,13 @@ async def embed(request):
 </body>
 </html>"""
     
-    # Replace placeholders with actual values (inject as raw JS literals)
+    # Replace placeholders with actual values (add quotes for strings, array for TURN)
     html = html.replace('__STUN_URL_0__', f"'{STUN_URLS[0]}'")
     html = html.replace('__STUN_URL_1__', f"'{STUN_URLS[1]}'")
-    html = html.replace('__TURN_URLS__', json.dumps(TURN_URLS))  # Already produces valid JS array
+    html = html.replace('__TURN_URLS__', json.dumps(TURN_URLS))  # Produces valid JS array
+    
+    # Replace double braces (used for escaping in f-strings, but this is a regular string)
+    html = html.replace('{{', '{').replace('}}', '}')
     
     response = web.Response(text=html, content_type="text/html")
     # Allow embedding from any origin including file:// and http://
