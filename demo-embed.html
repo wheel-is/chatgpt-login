@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatGPT Login Embed Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+        }
+        .embed-container {
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        iframe {
+            width: 100%;
+            height: 600px;
+            border: 0;
+            display: block;
+        }
+        .credentials {
+            background: #f7fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            display: none;
+        }
+        .credentials.show {
+            display: block;
+        }
+        .credentials h2 {
+            color: #2d3748;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+        .cred-item {
+            background: white;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+        .cred-label {
+            font-weight: 600;
+            color: #4a5568;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+        .cred-value {
+            font-family: 'Monaco', 'Courier New', monospace;
+            color: #2d3748;
+            word-break: break-all;
+            background: #f7fafc;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+        .copy-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-top: 10px;
+            transition: background 0.2s;
+        }
+        .copy-btn:hover {
+            background: #5568d3;
+        }
+        .info {
+            background: #e6fffa;
+            border-left: 4px solid #38b2ac;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        .info h3 {
+            color: #234e52;
+            margin-bottom: 8px;
+        }
+        .info p {
+            color: #2c7a7b;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 ChatGPT Login Widget Demo</h1>
+        
+        <div class="card">
+            <div class="info">
+                <h3>📖 How it works</h3>
+                <p>
+                    This iframe connects to a remote Electron app running on DigitalOcean. 
+                    When you complete the login flow, the credentials are securely sent back to this parent page via postMessage.
+                    You can embed this widget in any website!
+                </p>
+            </div>
+
+            <div class="embed-container">
+                <iframe
+                    id="loginFrame"
+                    src="http://64.23.163.23:8080/embed"
+                    allow="clipboard-read; clipboard-write; fullscreen"
+                ></iframe>
+            </div>
+        </div>
+
+        <div class="card credentials" id="credentialsCard">
+            <h2>✅ Login Successful!</h2>
+            <div id="credentialsContent"></div>
+            <button class="copy-btn" onclick="copyAllCredentials()">📋 Copy All Credentials</button>
+        </div>
+    </div>
+
+    <script>
+        let receivedCredentials = null;
+
+        // Listen for credentials from the iframe
+        window.addEventListener('message', (event) => {
+            console.log('Received message:', event);
+
+            // Security check - verify origin
+            if (event.origin !== 'http://64.23.163.23:8080') {
+                console.warn('Ignored message from untrusted origin:', event.origin);
+                return;
+            }
+
+            // Handle credentials
+            if (event.data?.type === 'chatgpt-credentials') {
+                receivedCredentials = event.data.credentials;
+                console.log('✅ Received ChatGPT credentials!', receivedCredentials);
+                displayCredentials(receivedCredentials);
+            }
+        });
+
+        function displayCredentials(creds) {
+            const container = document.getElementById('credentialsContent');
+            const card = document.getElementById('credentialsCard');
+
+            let html = '';
+            
+            if (creds.accessToken) {
+                html += `
+                    <div class="cred-item">
+                        <div class="cred-label">Access Token</div>
+                        <div class="cred-value">${creds.accessToken}</div>
+                    </div>
+                `;
+            }
+            
+            if (creds.refreshToken) {
+                html += `
+                    <div class="cred-item">
+                        <div class="cred-label">Refresh Token</div>
+                        <div class="cred-value">${creds.refreshToken}</div>
+                    </div>
+                `;
+            }
+            
+            if (creds.sessionId) {
+                html += `
+                    <div class="cred-item">
+                        <div class="cred-label">Session ID</div>
+                        <div class="cred-value">${creds.sessionId}</div>
+                    </div>
+                `;
+            }
+            
+            if (creds.userEmail) {
+                html += `
+                    <div class="cred-item">
+                        <div class="cred-label">User Email</div>
+                        <div class="cred-value">${creds.userEmail}</div>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
+            card.classList.add('show');
+            
+            // Scroll to credentials
+            card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function copyAllCredentials() {
+            if (!receivedCredentials) return;
+            
+            const text = JSON.stringify(receivedCredentials, null, 2);
+            navigator.clipboard.writeText(text).then(() => {
+                alert('✅ Credentials copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                alert('❌ Failed to copy credentials');
+            });
+        }
+    </script>
+</body>
+</html>
+
