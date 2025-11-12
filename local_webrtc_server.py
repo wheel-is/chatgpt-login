@@ -21,7 +21,12 @@ DISPLAY_HEIGHT = 1080  # 1080p
 FPS = 30  # Higher FPS for smoother interaction
 
 PUBLIC_IP = os.environ.get("PUBLIC_IP", os.environ.get("SERVER_PUBLIC_IP", "64.23.163.23"))
-TURN_URLS = [f"turn:{PUBLIC_IP}:3478", f"turn:{PUBLIC_IP}:5349"]
+TURN_URLS = [
+    f"turn:{PUBLIC_IP}:3478?transport=udp",
+    f"turn:{PUBLIC_IP}:3478?transport=tcp",
+    f"turn:{PUBLIC_IP}:5349?transport=udp",
+    f"turn:{PUBLIC_IP}:5349?transport=tcp",
+]
 STUN_URLS = [
     "stun:stun.l.google.com:19302",
     "stun:stun1.l.google.com:19302",
@@ -942,9 +947,10 @@ async def index(request):
 </html>"""
     
     # Replace placeholders with actual values (template already surrounds STUN URLs with quotes)
-    html = html.replace('__STUN_URL_0__', STUN_URLS[0])
-    html = html.replace('__STUN_URL_1__', STUN_URLS[1])
+    html = html.replace('__STUN_URL_0__', json.dumps(STUN_URLS[0]))
+    html = html.replace('__STUN_URL_1__', json.dumps(STUN_URLS[1]))
     html = html.replace('__TURN_URLS__', json.dumps(TURN_URLS))  # Produces valid JS array
+    html = html.replace('{{', '{').replace('}}', '}')
     
     return web.Response(text=html, content_type="text/html")
 
@@ -1189,8 +1195,8 @@ async def embed(request):
 </html>"""
     
     # Replace placeholders with actual values (add quotes for strings, array for TURN)
-    html = html.replace('__STUN_URL_0__', f"'{STUN_URLS[0]}'")
-    html = html.replace('__STUN_URL_1__', f"'{STUN_URLS[1]}'")
+    html = html.replace('__STUN_URL_0__', json.dumps(STUN_URLS[0]))
+    html = html.replace('__STUN_URL_1__', json.dumps(STUN_URLS[1]))
     html = html.replace('__TURN_URLS__', json.dumps(TURN_URLS))  # Produces valid JS array
     
     # Replace double braces (used for escaping in f-strings, but this is a regular string)
