@@ -636,8 +636,8 @@ async def index(request):
 
                 pc = new RTCPeerConnection({
                     iceServers: [
-                        { urls: __STUN_URL_0__ },
-                        { urls: __STUN_URL_1__ },
+                        { urls: '__STUN_URL_0__' },
+                        { urls: '__STUN_URL_1__' },
                         {
                             urls: __TURN_URLS__,
                             username: 'webrtc',
@@ -946,9 +946,9 @@ async def index(request):
 </body>
 </html>"""
     
-    # Replace placeholders with actual values (template already surrounds STUN URLs with quotes)
-    html = html.replace('__STUN_URL_0__', json.dumps(STUN_URLS[0]))
-    html = html.replace('__STUN_URL_1__', json.dumps(STUN_URLS[1]))
+    # Replace placeholders with actual values
+    html = html.replace('__STUN_URL_0__', STUN_URLS[0])
+    html = html.replace('__STUN_URL_1__', STUN_URLS[1])
     html = html.replace('__TURN_URLS__', json.dumps(TURN_URLS))  # Produces valid JS array
     html = html.replace('{{', '{').replace('}}', '}')
     
