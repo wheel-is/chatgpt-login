@@ -275,6 +275,11 @@ function createMainWindow() {
 
   mainWindow.setMenu(null);
 
+  // Hide cursor to avoid double cursor effect when streaming
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow.webContents.insertCSS('* { cursor: none !important; }');
+  });
+
   isProgressView = false;
   progressReady = false;
   pendingProgressMessages.length = 0;

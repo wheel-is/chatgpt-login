@@ -14,11 +14,11 @@ from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration, R
 from aiortc.mediastreams import VideoStreamTrack
 from aiortc.contrib.media import VideoFrame
 
-# Configuration - Full HD Resolution for crisp streaming and fast cursor tracking
+# Configuration - Optimized for low latency over network
 DISPLAY_NUM = ":99"
-DISPLAY_WIDTH = 1920
-DISPLAY_HEIGHT = 1080
-FPS = 24  # Standard video framerate
+DISPLAY_WIDTH = 1280  # Reduced for lower latency
+DISPLAY_HEIGHT = 720  # 720p for faster encoding
+FPS = 30  # Higher FPS for smoother interaction
 
 # Global state
 pcs = set()
