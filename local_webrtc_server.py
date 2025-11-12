@@ -127,8 +127,7 @@ def start_xvfb():
         '-ac',
         '+extension', 'GLX',
         '+render',
-        '-noreset',
-        '-nocursor'
+        '-noreset'
     ])
 
     import time
