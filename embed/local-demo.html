@@ -156,13 +156,9 @@
         <h1>🔐 ChatGPT Login Component Demo</h1>
         
         <div class="card">
-            <h2>Step 1: Get Your API Key</h2>
+            <h2>Step 1: API Key</h2>
             <div class="info">
-                Run this command in your terminal to generate an API key:
-                <br><br>
-                <code>curl -X POST http://64.23.163.23:8080/api/keys</code>
-                <br><br>
-                Then paste the API key in the iframe URL below (replace <code>sk_demo_key</code>).
+                Generating API key automatically...
             </div>
         </div>
 
@@ -172,12 +168,8 @@
                 Waiting for login to complete...
             </div>
             
-            <div class="iframe-container">
-                <iframe 
-                    id="loginFrame"
-                    src="http://64.23.163.23:8080/embed?api_key=sk_demo_key"
-                    allow="clipboard-read; clipboard-write">
-                </iframe>
+            <div class="iframe-container" id="iframeContainer">
+                <p style="text-align: center; color: #666;">Loading login component...</p>
             </div>
         </div>
 
@@ -203,6 +195,60 @@
 
     <script>
         let receivedCredentials = null;
+        let apiKey = null;
+
+        // Auto-generate API key on page load
+        async function initializeEmbed() {
+            try {
+                const response = await fetch('http://64.23.163.23:8080/api/keys', {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to generate API key');
+                }
+                
+                const data = await response.json();
+                apiKey = data.api_key;
+                
+                console.log('Generated API key:', apiKey);
+                
+                // Create iframe with the generated API key
+                const iframeContainer = document.getElementById('iframeContainer');
+                iframeContainer.innerHTML = `
+                    <iframe 
+                        id="loginFrame"
+                        src="http://64.23.163.23:8080/embed?api_key=${apiKey}"
+                        allow="clipboard-read; clipboard-write"
+                        style="width: 100%; height: 700px; border: none;">
+                    </iframe>
+                `;
+                
+                // Update Step 1 to show the generated key
+                const step1Card = document.querySelector('.card:first-child .info');
+                step1Card.innerHTML = `
+                    ✓ API key automatically generated: <code>${apiKey.substring(0, 20)}...</code>
+                    <br><br>
+                    This key is valid for 10 logins per hour.
+                `;
+                step1Card.style.background = '#d1fae5';
+                step1Card.style.borderColor = '#10a37f';
+                step1Card.style.color = '#065f46';
+                
+            } catch (error) {
+                console.error('Failed to initialize embed:', error);
+                document.getElementById('iframeContainer').innerHTML = `
+                    <p style="color: red; text-align: center; padding: 40px;">
+                        Failed to initialize: ${error.message}
+                        <br><br>
+                        Make sure the server is running at http://64.23.163.23:8080
+                    </p>
+                `;
+            }
+        }
+
+        // Initialize on page load
+        window.addEventListener('load', initializeEmbed);
 
         // Listen for credentials from the embedded iframe
         window.addEventListener('message', (event) => {
