@@ -544,7 +544,6 @@ async def index(request):
             height: auto;
             object-fit: contain;
             background: #000;
-            cursor: none;
         }
         .loading {
             position: absolute;
@@ -927,16 +926,6 @@ async def index(request):
         });
 
         remoteVideo.addEventListener('contextmenu', (e) => e.preventDefault());
-        
-        // Force cursor to hide when hovering over video using transparent cursor
-        const transparentCursor = 'url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==), none';
-        
-        remoteVideo.addEventListener('mouseenter', () => {
-            remoteVideo.style.cursor = transparentCursor;
-        });
-        remoteVideo.addEventListener('mouseleave', () => {
-            remoteVideo.style.cursor = 'auto';
-        });
         
         connectBtn.addEventListener('click', connect);
         disconnectBtn.addEventListener('click', disconnect);
