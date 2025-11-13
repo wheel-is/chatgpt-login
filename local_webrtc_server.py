@@ -1132,8 +1132,8 @@ async def embed(request):
                 e.preventDefault();
 
                 const rect = remoteVideo.getBoundingClientRect();
-                const scaleX = {DISPLAY_WIDTH} / rect.width;
-                const scaleY = {DISPLAY_HEIGHT} / rect.height;
+                const scaleX = __DISPLAY_WIDTH__ / rect.width;
+                const scaleY = __DISPLAY_HEIGHT__ / rect.height;
                 const x = Math.round((e.clientX - rect.left) * scaleX);
                 const y = Math.round((e.clientY - rect.top) * scaleY);
                 const button = e.button + 1;
@@ -1199,6 +1199,8 @@ async def embed(request):
     html = html.replace('__STUN_URL_0__', json.dumps(STUN_URLS[0]))
     html = html.replace('__STUN_URL_1__', json.dumps(STUN_URLS[1]))
     html = html.replace('__TURN_URLS__', json.dumps(TURN_URLS))  # Produces valid JS array
+    html = html.replace('__DISPLAY_WIDTH__', str(DISPLAY_WIDTH))
+    html = html.replace('__DISPLAY_HEIGHT__', str(DISPLAY_HEIGHT))
     
     # Replace double braces (used for escaping in f-strings, but this is a regular string)
     html = html.replace('{{', '{').replace('}}', '}')
