@@ -1310,7 +1310,7 @@ async def embed(request):
         // Restart Electron when page is refreshed/closed for completely fresh session
         window.addEventListener('beforeunload', () => {{
             try {{
-                navigator.sendBeacon('/restart', JSON.stringify({{ reason: 'page_reload' }}));
+                navigator.sendBeacon('/restart-electron', JSON.stringify({{ reason: 'page_reload' }}));
             }} catch (e) {{
                 // Ignore beacon errors
             }}
