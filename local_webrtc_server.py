@@ -1306,6 +1306,15 @@ async def embed(request):
         window.addEventListener('load', () => {{
             connect();
         }});
+
+        // Restart Electron when page is refreshed/closed for completely fresh session
+        window.addEventListener('beforeunload', () => {{
+            try {{
+                navigator.sendBeacon('/restart', JSON.stringify({{ reason: 'page_reload' }}));
+            }} catch (e) {{
+                // Ignore beacon errors
+            }}
+        }});
     </script>
 </body>
 </html>"""
