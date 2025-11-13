@@ -2,6 +2,7 @@
 """
 Local WebRTC server for streaming Electron app.
 Run inside Docker container with X virtual display.
+# Cache bust: 2025-11-12
 """
 
 import asyncio
@@ -1049,8 +1050,8 @@ async def embed(request):
 
                 pc = new RTCPeerConnection({{
                     iceServers: [
-                        {{ urls: '__STUN_URL_0__' }},
-                        {{ urls: '__STUN_URL_1__' }},
+                        {{ urls: __STUN_URL_0__ }},
+                        {{ urls: __STUN_URL_1__ }},
                         {{
                             urls: __TURN_URLS__,
                             username: 'webrtc',
