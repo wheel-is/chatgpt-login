@@ -403,7 +403,10 @@ async def offer(request):
     except (TypeError, ValueError):
         stream_height = None
     
-    print(f"Received offer from peer {peer_id}")
+    if stream_width and stream_height:
+        print(f"Received offer from peer {peer_id} requesting {stream_width}x{stream_height}")
+    else:
+        print(f"Received offer from peer {peer_id}")
     
     offer_sdp = RTCSessionDescription(sdp=payload["sdp"], type=payload["type"])
 
