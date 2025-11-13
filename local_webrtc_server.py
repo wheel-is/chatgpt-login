@@ -1007,7 +1007,7 @@ async def embed(request):
 </head>
 <body>
     <div class="video-container">
-        <video id="remoteVideo" autoplay playsinline></video>
+        <video id="remoteVideo" autoplay playsinline muted></video>
         <div id="statusOverlay" class="overlay show">Initializing secure login...</div>
         <div id="successOverlay" class="overlay success">✓ Login successful<br/>Credentials delivered</div>
     </div>
