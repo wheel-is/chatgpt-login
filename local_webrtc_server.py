@@ -1131,6 +1131,7 @@ async def embed(request):
             remoteVideo.addEventListener(eventName, (e) => {{
                 if (!dc || dc.readyState !== 'open') return;
                 e.preventDefault();
+                remoteVideo.focus();  // Ensure video has focus for keyboard events
 
                 const rect = remoteVideo.getBoundingClientRect();
                 const scaleX = __DISPLAY_WIDTH__ / rect.width;
@@ -1142,7 +1143,11 @@ async def embed(request):
             }});
         }});
 
-        document.addEventListener('keydown', async (e) => {{
+        // Make video focusable and capture keyboard events
+        remoteVideo.setAttribute('tabindex', '0');
+        remoteVideo.focus();
+        
+        remoteVideo.addEventListener('keydown', async (e) => {{
             if (!dc || dc.readyState !== 'open') return;
             e.preventDefault();
 
