@@ -47,6 +47,8 @@ COPY main.js .
 COPY preload.js .
 COPY package.json .
 COPY local_webrtc_server.py .
+COPY chatgpt-login-widget.js .
+COPY demo-widget.html .
 
 # Expose port for WebRTC server
 EXPOSE 8080

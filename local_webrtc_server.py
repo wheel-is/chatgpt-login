@@ -956,7 +956,16 @@ async def index(request):
     return web.Response(text=html, content_type="text/html")
 
 async def embed(request):
-    """Serve embeddable minimal UI page"""
+    """Serve embeddable minimal UI page with optional dimension configuration"""
+    # Parse query parameters for dimensions
+    query_params = request.rel_url.query
+    requested_width = query_params.get('width', None)
+    requested_height = query_params.get('height', None)
+    
+    # Use requested dimensions if provided, otherwise use defaults
+    display_width = int(requested_width) if requested_width else DISPLAY_WIDTH
+    display_height = int(requested_height) if requested_height else DISPLAY_HEIGHT
+    
     html = """<!DOCTYPE html>
 <html>
 <head>
@@ -1201,12 +1210,12 @@ async def embed(request):
 </body>
 </html>"""
     
-    # Replace placeholders with actual values (add quotes for strings, array for TURN)
+    # Replace placeholders with actual values (use requested dimensions)
     html = html.replace('__STUN_URL_0__', json.dumps(STUN_URLS[0]))
     html = html.replace('__STUN_URL_1__', json.dumps(STUN_URLS[1]))
     html = html.replace('__TURN_URLS__', json.dumps(TURN_URLS))  # Produces valid JS array
-    html = html.replace('__DISPLAY_WIDTH__', str(DISPLAY_WIDTH))
-    html = html.replace('__DISPLAY_HEIGHT__', str(DISPLAY_HEIGHT))
+    html = html.replace('__DISPLAY_WIDTH__', str(display_width))
+    html = html.replace('__DISPLAY_HEIGHT__', str(display_height))
     
     # Replace double braces (used for escaping in f-strings, but this is a regular string)
     html = html.replace('{{', '{').replace('}}', '}')
@@ -1215,6 +1224,24 @@ async def embed(request):
     # Allow embedding from any origin including file:// and http://
     response.headers['Content-Security-Policy'] = "frame-ancestors 'self' http: https: file: data:"
     return response
+
+async def serve_widget_js(request):
+    """Serve the widget JavaScript file"""
+    try:
+        with open('/app/chatgpt-login-widget.js', 'r') as f:
+            content = f.read()
+        return web.Response(text=content, content_type='application/javascript')
+    except FileNotFoundError:
+        return web.Response(text='// Widget file not found', status=404)
+
+async def serve_widget_demo(request):
+    """Serve the widget demo HTML file"""
+    try:
+        with open('/app/demo-widget.html', 'r') as f:
+            content = f.read()
+        return web.Response(text=content, content_type='text/html')
+    except FileNotFoundError:
+        return web.Response(text='<h1>Demo file not found</h1>', status=404)
 
 async def restart_electron(request):
     """Restart Electron app for fresh session"""
@@ -1289,6 +1316,8 @@ def main():
     app = web.Application()
     app.router.add_get('/', index)
     app.router.add_get('/embed', embed)
+    app.router.add_get('/chatgpt-login-widget.js', serve_widget_js)
+    app.router.add_get('/demo-widget.html', serve_widget_demo)
     app.router.add_post('/offer', offer)
     app.router.add_post('/restart-electron', restart_electron)
     app.on_shutdown.append(on_shutdown)
