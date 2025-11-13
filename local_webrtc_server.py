@@ -47,33 +47,53 @@ class ElectronDisplayTrack(VideoStreamTrack):
     
     kind = "video"
 
-    def __init__(self):
+    def __init__(self, target_width: int | None = None, target_height: int | None = None):
         super().__init__()
-        self.width = DISPLAY_WIDTH
-        self.height = DISPLAY_HEIGHT
+
+        if target_width and target_height:
+            # Ensure even numbers for yuv420 compatibility
+            target_width = int(target_width)
+            target_height = int(target_height)
+            if target_width % 2:
+                target_width += 1
+            if target_height % 2:
+                target_height += 1
+            self.width = max(160, min(target_width, DISPLAY_WIDTH))
+            self.height = max(160, min(target_height, DISPLAY_HEIGHT))
+        else:
+            self.width = DISPLAY_WIDTH
+            self.height = DISPLAY_HEIGHT
+
+        ffmpeg_cmd = [
+            'ffmpeg',
+            '-f', 'x11grab',
+            '-video_size', f'{DISPLAY_WIDTH}x{DISPLAY_HEIGHT}',
+            '-framerate', str(FPS),
+            '-probesize', '50M',
+            '-i', DISPLAY_NUM,
+            '-g', '120',
+            '-force_key_frames', 'expr:gte(t,10)',
+        ]
+
+        vf_filters = []
+        if (self.width, self.height) != (DISPLAY_WIDTH, DISPLAY_HEIGHT):
+            vf_filters.append(f'scale={self.width}:{self.height}')
+        vf_filters.append('format=yuv420p')
+        ffmpeg_cmd.extend(['-vf', ','.join(vf_filters)])
+
+        ffmpeg_cmd.extend([
+            '-pix_fmt', 'yuv420p',
+            '-f', 'rawvideo',
+            '-'
+        ])
         
-        # Start ffmpeg to capture the display in YUV420 (WebRTC-friendly)
         self.ffmpeg_process = subprocess.Popen(
-            [
-                'ffmpeg',
-                '-f', 'x11grab',
-                '-video_size', f'{DISPLAY_WIDTH}x{DISPLAY_HEIGHT}',
-                '-framerate', str(FPS),
-                '-probesize', '50M',
-                '-i', DISPLAY_NUM,
-                # Force key-frame interval (GOP) and delay first large I-frame
-                '-g', '120',  # one key-frame every ~5s at 24 fps
-                '-force_key_frames', 'expr:gte(t,10)',  # push first big I-frame after 10s
-                '-vf', 'format=yuv420p',
-                '-pix_fmt', 'yuv420p',
-                '-f', 'rawvideo',
-                '-'
-            ],
+            ffmpeg_cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
-            bufsize=DISPLAY_WIDTH * DISPLAY_HEIGHT * 3 // 2
+            bufsize=self.width * self.height * 3 // 2
         )
-        print(f"Started ffmpeg capture from display {DISPLAY_NUM}")
+        print(f"Started ffmpeg capture from display {DISPLAY_NUM} at {self.width}x{self.height}")
 
     async def recv(self) -> VideoFrame:
         """Read a frame from ffmpeg and return it as a VideoFrame"""
@@ -370,12 +390,22 @@ def handle_input_event(data):
 
 async def offer(request):
     """Handle WebRTC offer"""
-    params = await request.json()
-    peer_id = params.get("peer_id", "default")
+    payload = await request.json()
+    peer_id = payload.get("peer_id", "default")
+    stream_width = payload.get("stream_width")
+    stream_height = payload.get("stream_height")
+    try:
+        stream_width = int(stream_width) if stream_width else None
+    except (TypeError, ValueError):
+        stream_width = None
+    try:
+        stream_height = int(stream_height) if stream_height else None
+    except (TypeError, ValueError):
+        stream_height = None
     
     print(f"Received offer from peer {peer_id}")
     
-    offer_sdp = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
+    offer_sdp = RTCSessionDescription(sdp=payload["sdp"], type=payload["type"])
 
     pc = RTCPeerConnection(configuration=RTCConfiguration(
         iceServers=[
@@ -429,7 +459,7 @@ async def offer(request):
                 print(f"Error handling input: {e}")
 
     # Add video track with codec and bitrate preferences
-    video_track = ElectronDisplayTrack()
+    video_track = ElectronDisplayTrack(target_width=stream_width, target_height=stream_height)
     sender = pc.addTrack(video_track)
 
     try:
@@ -445,15 +475,15 @@ async def offer(request):
         print(f"⚠️  Codec preference setup failed: {e}")
 
     try:
-        params = sender.getParameters()
-        if params and getattr(params, 'encodings', None):
+        encoding_params = sender.getParameters()
+        if encoding_params and getattr(encoding_params, 'encodings', None):
             # Start conservatively to reduce latency
-            for enc in params.encodings:
+            for enc in encoding_params.encodings:
                 enc.maxBitrate = 2_000_000   # 2 Mbps initial ceiling
                 enc.minBitrate = 1_000_000   # 1 Mbps floor
                 enc.maxFramerate = FPS
                 enc.scaleResolutionDownBy = 1.0
-            await sender.setParameters(params)
+            await sender.setParameters(encoding_params)
 
             async def ramp_bitrate():
                 await asyncio.sleep(6)  # allow ICE + congestion control to settle
@@ -956,16 +986,7 @@ async def index(request):
     return web.Response(text=html, content_type="text/html")
 
 async def embed(request):
-    """Serve embeddable minimal UI page with optional dimension configuration"""
-    # Parse query parameters for dimensions
-    query_params = request.rel_url.query
-    requested_width = query_params.get('width', None)
-    requested_height = query_params.get('height', None)
-    
-    # Use requested dimensions if provided, otherwise use defaults
-    display_width = int(requested_width) if requested_width else DISPLAY_WIDTH
-    display_height = int(requested_height) if requested_height else DISPLAY_HEIGHT
-    
+    """Serve embeddable minimal UI page"""
     html = """<!DOCTYPE html>
 <html>
 <head>
@@ -1026,9 +1047,81 @@ async def embed(request):
         const remoteVideo = document.getElementById('remoteVideo');
         const statusOverlay = document.getElementById('statusOverlay');
         const successOverlay = document.getElementById('successOverlay');
+        const queryParams = new URLSearchParams(window.location.search);
+        const BASE_DISPLAY_WIDTH = __DISPLAY_WIDTH__;
+        const BASE_DISPLAY_HEIGHT = __DISPLAY_HEIGHT__;
+        const profile = queryParams.get('profile');
+        const manualWidthParam = queryParams.get('streamWidth') || queryParams.get('width');
+        const manualHeightParam = queryParams.get('streamHeight') || queryParams.get('height');
+        const autoModeParam = queryParams.get('auto');
+        const profilePresets = {{
+            mobile: {{ width: 393, height: 852 }},
+            iphone14: {{ width: 393, height: 852 }},
+            iphone15: {{ width: 393, height: 852 }},
+            ipad: {{ width: 820, height: 1180 }},
+            desktop: {{ width: BASE_DISPLAY_WIDTH, height: BASE_DISPLAY_HEIGHT }}
+        }};
 
         let pc = null;
         let dc = null;
+        let manualStreamWidth = null;
+        let manualStreamHeight = null;
+        let autoMode = true;
+        let desiredStreamWidth = null;
+        let desiredStreamHeight = null;
+
+        if (profile && profilePresets[profile]) {{
+            manualStreamWidth = profilePresets[profile].width;
+            manualStreamHeight = profilePresets[profile].height;
+        }}
+        if (manualWidthParam) {{
+            const parsed = parseInt(manualWidthParam, 10);
+            if (!Number.isNaN(parsed)) manualStreamWidth = parsed;
+        }}
+        if (manualHeightParam) {{
+            const parsed = parseInt(manualHeightParam, 10);
+            if (!Number.isNaN(parsed)) manualStreamHeight = parsed;
+        }}
+        if (autoModeParam === 'false' || autoModeParam === '0') {{
+            autoMode = false;
+        }}
+        if (manualStreamWidth && manualStreamHeight) {{
+            autoMode = false;
+        }}
+
+        function ensureEven(value) {{
+            if (!value) return value;
+            return value % 2 === 0 ? value : value + 1;
+        }}
+
+        function clamp(value, min, max) {{
+            return Math.max(min, Math.min(value, max));
+        }}
+
+        function determineStreamDimensions() {{
+            if (!autoMode && manualStreamWidth && manualStreamHeight) {{
+                desiredStreamWidth = ensureEven(clamp(manualStreamWidth, 160, BASE_DISPLAY_WIDTH));
+                desiredStreamHeight = ensureEven(clamp(manualStreamHeight, 160, BASE_DISPLAY_HEIGHT));
+                return;
+            }}
+
+            const container = remoteVideo.parentElement || remoteVideo;
+            const rect = container.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            let width = Math.round(rect.width * dpr);
+            let height = Math.round(rect.height * dpr);
+            width = ensureEven(clamp(width, 160, BASE_DISPLAY_WIDTH));
+            height = ensureEven(clamp(height, 160, BASE_DISPLAY_HEIGHT));
+            desiredStreamWidth = width;
+            desiredStreamHeight = height;
+        }}
+
+        determineStreamDimensions();
+        window.addEventListener('resize', () => {{
+            if (autoMode) {{
+                determineStreamDimensions();
+            }}
+        }});
 
         function updateStatus(message) {{
             statusOverlay.textContent = message;
@@ -1056,6 +1149,7 @@ async def embed(request):
         async function connect() {{
             try {{
                 updateStatus('Connecting...');
+                determineStreamDimensions();
 
                 pc = new RTCPeerConnection({{
                     iceServers: [
@@ -1096,7 +1190,10 @@ async def embed(request):
                     body: JSON.stringify({{
                         peer_id: peerId,
                         sdp: pc.localDescription.sdp,
-                        type: pc.localDescription.type
+                        type: pc.localDescription.type,
+                        stream_width: desiredStreamWidth,
+                        stream_height: desiredStreamHeight,
+                        stream_profile: profile || (autoMode ? 'auto' : 'manual')
                     }})
                 }});
 
@@ -1210,12 +1307,12 @@ async def embed(request):
 </body>
 </html>"""
     
-    # Replace placeholders with actual values (use requested dimensions)
+    # Replace placeholders with actual values (add quotes for strings, array for TURN)
     html = html.replace('__STUN_URL_0__', json.dumps(STUN_URLS[0]))
     html = html.replace('__STUN_URL_1__', json.dumps(STUN_URLS[1]))
     html = html.replace('__TURN_URLS__', json.dumps(TURN_URLS))  # Produces valid JS array
-    html = html.replace('__DISPLAY_WIDTH__', str(display_width))
-    html = html.replace('__DISPLAY_HEIGHT__', str(display_height))
+    html = html.replace('__DISPLAY_WIDTH__', str(DISPLAY_WIDTH))
+    html = html.replace('__DISPLAY_HEIGHT__', str(DISPLAY_HEIGHT))
     
     # Replace double braces (used for escaping in f-strings, but this is a regular string)
     html = html.replace('{{', '{').replace('}}', '}')
@@ -1224,24 +1321,6 @@ async def embed(request):
     # Allow embedding from any origin including file:// and http://
     response.headers['Content-Security-Policy'] = "frame-ancestors 'self' http: https: file: data:"
     return response
-
-async def serve_widget_js(request):
-    """Serve the widget JavaScript file"""
-    try:
-        with open('/app/chatgpt-login-widget.js', 'r') as f:
-            content = f.read()
-        return web.Response(text=content, content_type='application/javascript')
-    except FileNotFoundError:
-        return web.Response(text='// Widget file not found', status=404)
-
-async def serve_widget_demo(request):
-    """Serve the widget demo HTML file"""
-    try:
-        with open('/app/demo-widget.html', 'r') as f:
-            content = f.read()
-        return web.Response(text=content, content_type='text/html')
-    except FileNotFoundError:
-        return web.Response(text='<h1>Demo file not found</h1>', status=404)
 
 async def restart_electron(request):
     """Restart Electron app for fresh session"""
@@ -1316,8 +1395,6 @@ def main():
     app = web.Application()
     app.router.add_get('/', index)
     app.router.add_get('/embed', embed)
-    app.router.add_get('/chatgpt-login-widget.js', serve_widget_js)
-    app.router.add_get('/demo-widget.html', serve_widget_demo)
     app.router.add_post('/offer', offer)
     app.router.add_post('/restart-electron', restart_electron)
     app.on_shutdown.append(on_shutdown)
