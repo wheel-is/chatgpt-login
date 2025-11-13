@@ -1064,6 +1064,7 @@ async def embed(request):
 
                 pc.ontrack = (event) => {{
                     remoteVideo.srcObject = event.streams[0];
+                    remoteVideo.play().catch(e => console.error('Play failed:', e));
                     hideStatus();
                 }};
 
